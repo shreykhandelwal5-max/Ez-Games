@@ -1,0 +1,19 @@
+{
+  "name": "ez-games",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "EZ-GAMES — a polished web arcade with Firebase auth, progress tracking and analytics.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview --port 4173"
+  },
+  "dependencies": {
+    "firebase": "^11.1.0"
+  },
+  "devDependencies": {
+    "vite": "^6.0.7",
+    "terser": "^5.37.0"
+  }
+}

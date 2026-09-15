@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <title>STAR CONNECT | PREMIUM</title>
+    <style>
+        :root {
+            --accent: #00f2ff;
+            --success: #bc13fe;
+            --danger: #ff4d4d;
+            --glass: rgba(255, 255, 255, 0.07);
+            --glass-heavy: rgba(255, 255, 255, 0.12);
+        }
+
+        body, html { 
+            margin: 0; padding: 0; overflow: hidden; 
+            background: #020408; height: 100vh; width: 100vw;
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            color: white; touch-action: none;
+        }
+
+        canvas { display: block; width: 100%; height: 100%; cursor: crosshair; }
+
+        /* Elegant Top Header */
+        #header {
+            position: absolute; top: 25px; width: 100%;
+            display: flex; justify-content: center;
+            pointer-events: none; z-index: 10;
+        }
+
+        .status-pill {
+            background: var(--glass);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 10px 35px; border-radius: 100px;
+            font-size: 10px; text-transform: uppercase;
+            letter-spacing: 4px; color: var(--accent);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+        }
+
+        /* Modern Navigation Dock */
+        #nav-dock {
+            position: absolute; bottom: 30px; left: 50%;
+            transform: translateX(-50%);
+            display: flex; gap: 6px; z-index: 20;
+            background: var(--glass); padding: 8px;
+            border-radius: 24px; border: 1px solid rgba(255,255,255,0.08);
+            backdrop-filter: blur(15px);
+        }
+
+        .nav-item {
+            background: transparent; border: none; color: white;
+            padding: 12px 22px; border-radius: 18px;
+            font-size: 11px; font-weight: 600; text-transform: capitalize;
+            cursor: pointer; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            opacity: 0.5;
+        }
+
+        .nav-item:hover { opacity: 1; background: rgba(255,255,255,0.05); }
+        .nav-item.active { opacity: 1; background: white; color: #020408; box-shadow: 0 4px 15px rgba(255,255,255,0.2); }
+        .nav-item.impossible-mode { color: var(--danger); }
+        .nav-item.impossible-mode.active { background: var(--danger); color: white; }
+
+        /* Completion Overlay */
+        #overlay {
+            position: fixed; inset: 0; background: rgba(2, 4, 8, 0.92);
+            display: none; flex-direction: column; align-items: center; justify-content: center;
+            z-index: 100; backdrop-filter: blur(20px);
+        }
+
+        .celebration-text { font-weight: 200; font-size: 3.5vw; letter-spacing: 15px; color: var(--success); margin-bottom: 40px; }
+
+        .btn-group { display: flex; gap: 15px; }
+
+        .action-btn {
+            background: transparent; border: 1.5px solid rgba(255,255,255,0.3);
+            color: white; padding: 16px 35px;
+            font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 3px;
+            cursor: pointer; transition: 0.3s; border-radius: 12px;
+        }
+
+        .action-btn:hover { border-color: white; background: rgba(255,255,255,0.1); }
+        .next-btn { background: var(--success); border: none; color: white; }
+        .next-btn:hover { transform: translateY(-3px); box-shadow: 0 10px 20px rgba(188, 19, 254, 0.3); background: var(--success); }
+    </style>
+    <script src="_ez-sdk.js"></script>
+</head>
+<body>
+
+    <div id="header">
+        <div class="status-pill" id="task-ui">Select Level</div>
+    </div>
+
+    <div id="nav-dock">
+        <button id="nav-easy" class="nav-item active" onclick="changeLevel('easy')">Easy</button>
+        <button id="nav-medium" class="nav-item" onclick="changeLevel('medium')">Medium</button>
+        <button id="nav-hard" class="nav-item" onclick="changeLevel('hard')">Hard</button>
+        <button id="nav-legendary" class="nav-item" onclick="changeLevel('legendary')">Legendary</button>
+        <button id="nav-impossible" class="nav-item impossible-mode" onclick="changeLevel('impossible')">Impossible</button>
+    </div>
+
+    <div id="overlay">
+        <div class="celebration-text" id="overlay-title">SYSTEM ALIGNED</div>
+        <div class="btn-group">
+            <button class="action-btn" onclick="initLevel()">Replay</button>
+            <button id="next-level-btn" class="action-btn next-btn" onclick="goToNextLevel()">Next Level</button>
+        </div>
+    </div>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const taskUI = document.getElementById('task-ui');
+        const overlay = document.getElementById('overlay');
+        const nextBtn = document.getElementById('next-level-btn');
+
+        const levelOrder = ['easy', 'medium', 'hard', 'legendary', 'impossible'];
+        let w, h, dots = [], stars = [], pulseRings = [];
+        let activeIdx = 0, isDragging = false, currentMode = 'easy';
+        let mouse = { x: 0, y: 0 };
+        const HITBOX = 65;
+
+        const shapes = {
+            easy: [{x:0.15,y:0.5},{x:0.35,y:0.25},{x:0.65,y:0.25},{x:0.85,y:0.5},{x:0.5,y:0.85},{x:0.15,y:0.5}],
+            medium: [{x:0.25,y:0.75},{x:0.25,y:0.35},{x:0.5,y:0.15},{x:0.75,y:0.35},{x:0.75,y:0.75},{x:0.25,y:0.75}],
+            hard: [{x:0.1,y:0.4},{x:0.3,y:0.2},{x:0.5,y:0.4},{x:0.7,y:0.2},{x:0.9,y:0.4},{x:0.7,y:0.7},{x:0.3,y:0.7},{x:0.1,y:0.4}],
+            legendary: [{x:0.05,y:0.5},{x:0.2,y:0.2},{x:0.4,y:0.5},{x:0.6,y:0.2},{x:0.8,y:0.5},{x:0.95,y:0.5},{x:0.8,y:0.8},{x:0.6,y:0.5},{x:0.4,y:0.8},{x:0.2,y:0.5},{x:0.05,y:0.5}],
+            impossible: Array.from({length: 12}, () => ({x: Math.random(), y: Math.random()}))
+        };
+
+        function resize() {
+            w = canvas.width = window.innerWidth;
+            h = canvas.height = window.innerHeight;
+            initStars();
+            initLevel();
+        }
+        window.addEventListener('resize', resize);
+
+        function initStars() {
+            stars = Array.from({length: 100}, () => ({
+                x: Math.random() * w, y: Math.random() * h,
+                size: Math.random() * 1.5, speed: Math.random() * 0.04
+            }));
+        }
+
+        function initLevel() {
+            overlay.style.display = 'none';
+            dots = shapes[currentMode].map((p, i) => ({
+                x: p.x * w, y: p.y * h, id: i + 1,
+                vx: currentMode === 'impossible' ? (Math.random() - 0.5) * 2.8 : 0,
+                vy: currentMode === 'impossible' ? (Math.random() - 0.5) * 2.8 : 0
+            }));
+            activeIdx = 0;
+            pulseRings = [];
+            isDragging = false;
+            updateUI();
+            EZ.start();
+        }
+
+        function changeLevel(mode) {
+            currentMode = mode;
+            document.querySelectorAll('.nav-item').forEach(btn => {
+                btn.classList.remove('active');
+                if(btn.id === `nav-${mode}`) btn.classList.add('active');
+            });
+            initLevel();
+        }
+
+        function goToNextLevel() {
+            const currentIndex = levelOrder.indexOf(currentMode);
+            if (currentIndex < levelOrder.length - 1) {
+                changeLevel(levelOrder[currentIndex + 1]);
+            }
+        }
+
+        function updateUI() {
+            if(activeIdx < dots.length - 1) {
+                taskUI.innerText = `Lvl: ${currentMode} • Star ${dots[activeIdx].id} to ${dots[activeIdx+1].id}`;
+            } else {
+                taskUI.innerText = "Constellation Secured";
+            }
+        }
+
+        function handleInput(x, y, start = false) {
+            mouse.x = x; mouse.y = y;
+            if(start) {
+                const d = Math.hypot(x - dots[activeIdx].x, y - dots[activeIdx].y);
+                if(d < HITBOX) isDragging = true;
+            }
+            if(isDragging && activeIdx < dots.length - 1) {
+                const next = dots[activeIdx + 1];
+                if(Math.hypot(x - next.x, y - next.y) < HITBOX) {
+                    pulseRings.push({ x: next.x, y: next.y, r: 10, opacity: 1 });
+                    activeIdx++;
+                    updateUI();
+                    if(activeIdx === dots.length - 1) {
+                        isDragging = false;
+                        EZ.level(currentMode);
+                        EZ.over({ score: levelOrder.indexOf(currentMode) + 1, won: true, level: currentMode });
+                        const isLastLevel = currentMode === 'impossible';
+                        nextBtn.style.display = isLastLevel ? 'none' : 'block';
+                        setTimeout(() => { overlay.style.display = 'flex'; }, 600);
+                    }
+                }
+            }
+        }
+
+        canvas.addEventListener('mousedown', e => handleInput(e.clientX, e.clientY, true));
+        window.addEventListener('mousemove', e => handleInput(e.clientX, e.clientY));
+        window.addEventListener('mouseup', () => isDragging = false);
+        canvas.addEventListener('touchstart', e => handleInput(e.touches[0].clientX, e.touches[0].clientY, true));
+        canvas.addEventListener('touchmove', e => handleInput(e.touches[0].clientX, e.touches[0].clientY));
+
+        function draw() {
+            ctx.fillStyle = '#020408';
+            ctx.fillRect(0,0,w,h);
+
+            stars.forEach(s => {
+                s.y -= s.speed; if(s.y < 0) s.y = h;
+                ctx.globalAlpha = 0.3; ctx.fillStyle = "white";
+                ctx.beginPath(); ctx.arc(s.x, s.y, s.size, 0, Math.PI*2); ctx.fill();
+            });
+            ctx.globalAlpha = 1;
+
+            if(currentMode === 'impossible') {
+                dots.forEach(d => {
+                    d.x += d.vx; d.y += d.vy;
+                    if(d.x < 80 || d.x > w-80) d.vx *= -1;
+                    if(d.y < 80 || d.y > h-80) d.vy *= -1;
+                });
+            }
+
+            if(activeIdx > 0) {
+                ctx.beginPath(); ctx.lineWidth = 3; ctx.strokeStyle = '#bc13fe';
+                ctx.shadowBlur = 10; ctx.shadowColor = '#bc13fe';
+                ctx.moveTo(dots[0].x, dots[0].y);
+                for(let i=1; i<=activeIdx; i++) ctx.lineTo(dots[i].x, dots[i].y);
+                ctx.stroke(); ctx.shadowBlur = 0;
+            }
+
+            if(isDragging && activeIdx < dots.length - 1) {
+                ctx.beginPath(); ctx.strokeStyle = '#00f2ff'; ctx.setLineDash([10, 8]);
+                ctx.moveTo(dots[activeIdx].x, dots[activeIdx].y);
+                ctx.lineTo(mouse.x, mouse.y); ctx.stroke(); ctx.setLineDash([]);
+            }
+
+            pulseRings.forEach((r, i) => {
+                r.r += 3; r.opacity -= 0.05;
+                if(r.opacity <= 0) pulseRings.splice(i, 1);
+                ctx.beginPath(); ctx.arc(r.x, r.y, r.r, 0, Math.PI*2);
+                ctx.strokeStyle = `rgba(188, 19, 254, ${r.opacity})`; ctx.stroke();
+            });
+
+            dots.forEach((dot, i) => {
+                const done = i <= activeIdx;
+                const next = i === activeIdx + 1;
+
+                if(next) {
+                    const p = Math.sin(Date.now() * 0.005) * 8;
+                    ctx.beginPath(); ctx.arc(dot.x, dot.y, 22 + p, 0, Math.PI*2);
+                    ctx.fillStyle = 'rgba(0, 242, 255, 0.08)'; ctx.fill();
+                }
+
+                ctx.beginPath(); ctx.arc(dot.x, dot.y, done ? 7 : 4, 0, Math.PI*2);
+                ctx.fillStyle = done ? '#bc13fe' : (next ? '#00f2ff' : '#444');
+                ctx.fill();
+
+                if(!done) {
+                    ctx.fillStyle = next ? 'white' : 'rgba(255,255,255,0.2)';
+                    ctx.font = '600 11px Inter'; ctx.textAlign = 'center';
+                    ctx.fillText(dot.id, dot.x, dot.y - 25);
+                }
+            });
+
+            requestAnimationFrame(draw);
+        }
+
+        resize();
+        draw();
+        EZ.ready();
+    </script>
+</body>
+</html>

@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <title>NEON STRIKER | V5</title>
+    <style>
+        :root {
+            --p1: #00d2ff;
+            --p2: #ff00ff;
+            --bg: #ffffff;
+        }
+
+        body, html { 
+            margin: 0; padding: 0; overflow: hidden; 
+            background: var(--bg); height: 100vh; width: 100vw;
+            font-family: 'Inter', system-ui, sans-serif; color: #1a1a1a;
+        }
+
+        canvas { display: block; cursor: none; }
+
+        #hud {
+            position: absolute; top: 20px; width: 100%;
+            display: flex; justify-content: center; gap: 30px;
+            pointer-events: none; z-index: 10;
+        }
+
+        .score-box {
+            background: white; border: 1px solid #eee;
+            padding: 8px 25px; border-radius: 8px; text-align: center;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.03);
+            min-width: 80px;
+        }
+
+        .score-num { font-size: 36px; font-weight: 900; display: block; }
+
+        #overlay {
+            position: fixed; inset: 0; background: rgba(255, 255, 255, 0.98);
+            display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 1000;
+        }
+
+        .btn {
+            background: #111; color: white; border: none;
+            padding: 16px 50px; font-size: 11px; letter-spacing: 5px;
+            text-transform: uppercase; cursor: pointer; border-radius: 4px;
+            transition: 0.2s;
+        }
+
+        .btn:hover { transform: scale(1.05); background: var(--p1); }
+    </style>
+    <script src="_ez-sdk.js"></script>
+</head>
+<body>
+
+    <div id="hud">
+        <div class="score-box" style="border-left: 5px solid var(--p1);">
+            <span id="p1-s" class="score-num">0</span>
+        </div>
+        <div style="font-weight: 900; font-size: 20px; align-self: center; color: #ddd;">VS</div>
+        <div class="score-box" style="border-right: 5px solid var(--p2);">
+            <span id="p2-s" class="score-num">0</span>
+        </div>
+    </div>
+
+    <div id="overlay">
+        <h1 id="msg" style="letter-spacing: 12px; font-weight: 100; margin-bottom: 30px;">NEON STRIKER</h1>
+        <button class="btn" onclick="startMatch()">Match Start</button>
+        <p style="font-size: 9px; opacity: 0.4; margin-top: 20px; letter-spacing: 2px;">FIRST TO 5 WINS</p>
+    </div>
+
+    <canvas id="stage"></canvas>
+
+    <script>
+        const canvas = document.getElementById('stage');
+        const ctx = canvas.getContext('2d');
+        const overlay = document.getElementById('overlay');
+        
+        let w, h, p1S = 0, p2S = 0, active = false;
+        let puck = { x: 0, y: 0, r: 15, vx: 0, vy: 0, power: false };
+        let p1 = { x: 0, y: 0, r: 42, power: false };
+        let p2 = { x: 0, y: 0, r: 42 };
+        let shake = 0;
+        const goalH = 220;
+
+        function resize() {
+            w = canvas.width = window.innerWidth;
+            h = canvas.height = window.innerHeight;
+            resetPuck();
+        }
+
+        function resetPuck() {
+            puck.x = w / 2;
+            puck.y = h / 2;
+            puck.vx = (Math.random() > 0.5 ? 1 : -1) * 4;
+            puck.vy = (Math.random() - 0.5) * 6;
+            puck.power = false;
+        }
+
+        window.addEventListener('resize', resize);
+        window.addEventListener('contextmenu', e => e.preventDefault());
+        window.addEventListener('mousedown', e => { if(e.button === 2) p1.power = true; });
+        window.addEventListener('mouseup', e => { if(e.button === 2) p1.power = false; });
+        
+        window.addEventListener('mousemove', e => {
+            p1.x = Math.min(e.clientX, w/2 - 60);
+            p1.y = e.clientY;
+        });
+
+        function startMatch() {
+            overlay.style.display = 'none';
+            p1S = 0; p2S = 0;
+            document.getElementById('p1-s').innerText = 0;
+            document.getElementById('p2-s').innerText = 0;
+            active = true;
+            resize();
+            loop();
+            EZ.start();
+        }
+
+        function loop() {
+            if(!active) return;
+            
+            // Screen Shake Logic
+            let sx = (Math.random() - 0.5) * shake;
+            let sy = (Math.random() - 0.5) * shake;
+            if(shake > 0) shake *= 0.9;
+
+            ctx.setTransform(1, 0, 0, 1, sx, sy);
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(-10, -10, w+20, h+20);
+            
+            // Field Aesthetics
+            ctx.strokeStyle = '#f8f8f8';
+            ctx.lineWidth = 2;
+            ctx.beginPath(); ctx.moveTo(w/2, 0); ctx.lineTo(w/2, h); ctx.stroke();
+            ctx.beginPath(); ctx.arc(w/2, h/2, 80, 0, Math.PI*2); ctx.stroke();
+
+            // Clear Neon Goals
+            ctx.lineWidth = 12; ctx.lineCap = "round";
+            ctx.strokeStyle = '#00d2ff';
+            ctx.beginPath(); ctx.moveTo(6, h/2 - goalH/2); ctx.lineTo(6, h/2 + goalH/2); ctx.stroke();
+            ctx.strokeStyle = '#ff00ff';
+            ctx.beginPath(); ctx.moveTo(w-6, h/2 - goalH/2); ctx.lineTo(w-6, h/2 + goalH/2); ctx.stroke();
+
+            // AI Smart logic (prevents corner traps)
+            p2.x = w - 80;
+            // AI only moves if the puck is on its half or moving toward it
+            let aiEase = (puck.x > w/2 - 100) ? 0.07 : 0.02;
+            p2.y += (puck.y - p2.y) * aiEase;
+
+            // Puck Movement
+            puck.x += puck.vx;
+            puck.y += puck.vy;
+
+            // Wall Bounces
+            if(puck.y - puck.r < 0 || puck.y + puck.r > h) {
+                puck.vy *= -1;
+                puck.y = puck.y < h/2 ? puck.r : h - puck.r;
+            }
+
+            // Scoring
+            if(puck.x - puck.r < 0) {
+                if(puck.y > h/2 - goalH/2 && puck.y < h/2 + goalH/2) {
+                    p2S++; document.getElementById('p2-s').innerText = p2S; EZ.score(p1S);
+                    shake = 20; checkWin(); resetPuck();
+                } else { puck.vx *= -1; puck.x = puck.r; }
+            }
+            if(puck.x + puck.r > w) {
+                if(puck.y > h/2 - goalH/2 && puck.y < h/2 + goalH/2) {
+                    p1S++; document.getElementById('p1-s').innerText = p1S; EZ.score(p1S);
+                    shake = 20; checkWin(); resetPuck();
+                } else { puck.vx *= -1; puck.x = w - puck.r; }
+            }
+
+            // Collisions
+            bounce(p1, true);
+            bounce(p2, false);
+
+            // Draw Players
+            drawPlayer(p1.x, p1.y, '#00d2ff', p1.power);
+            drawPlayer(p2.x, p2.y, '#ff00ff', false);
+            
+            // Draw Puck
+            ctx.shadowBlur = puck.power ? 25 : 5;
+            ctx.shadowColor = puck.power ? '#00d2ff' : 'rgba(0,0,0,0.1)';
+            ctx.fillStyle = puck.power ? '#00d2ff' : '#222';
+            ctx.beginPath(); ctx.arc(puck.x, puck.y, puck.r, 0, Math.PI*2); ctx.fill();
+            ctx.shadowBlur = 0;
+
+            ctx.setTransform(1, 0, 0, 1, 0, 0); // Reset transform
+            requestAnimationFrame(loop);
+        }
+
+        function bounce(p, canPower) {
+            let dx = puck.x - p.x;
+            let dy = puck.y - p.y;
+            let dist = Math.hypot(dx, dy);
+            if(dist < puck.r + p.r) {
+                let angle = Math.atan2(dy, dx);
+                let speed = (canPower && p.power) ? 16 : 9;
+                puck.vx = Math.cos(angle) * speed;
+                puck.vy = Math.sin(angle) * speed;
+                puck.power = (canPower && p.power);
+                // Push out to avoid overlap
+                puck.x = p.x + Math.cos(angle) * (puck.r + p.r + 1);
+                puck.y = p.y + Math.sin(angle) * (puck.r + p.r + 1);
+            }
+        }
+
+        function drawPlayer(x, y, color, pow) {
+            ctx.fillStyle = color;
+            ctx.shadowBlur = pow ? 40 : 15;
+            ctx.shadowColor = color;
+            ctx.beginPath(); ctx.arc(x, y, 42, 0, Math.PI*2); ctx.fill();
+            if(pow) {
+                ctx.strokeStyle = 'white'; ctx.lineWidth = 3;
+                ctx.beginPath(); ctx.arc(x, y, 48, 0, Math.PI*2); ctx.stroke();
+            }
+            ctx.shadowBlur = 0;
+        }
+
+        function checkWin() {
+            if(p1S >= 5 || p2S >= 5) {
+                active = false;
+                overlay.style.display = 'flex';
+                document.getElementById('msg').innerText = p1S >= 5 ? "YOU WON!" : "CPU WON!";
+                EZ.over({ score: p1S, won: p1S >= 5, detail: { cpu: p2S } });
+            }
+        }
+
+        resize();
+        EZ.ready();
+    </script>
+</body>
+</html>

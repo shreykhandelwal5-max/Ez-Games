@@ -1,0 +1,47 @@
+rules_version = '2';
+
+// EZ-GAMES data model
+//   users/{uid}                      profile
+//   users/{uid}/progress/{gameId}    per-game bests, plays, time
+//   users/{uid}/sessions/{autoId}    one document per finished run
+//
+// Every document is private to the player it belongs to: a signed-in user can
+// only ever read and write inside their own /users/{uid} subtree.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isOwner(uid) {
+      return request.auth != null && request.auth.uid == uid;
+    }
+
+    match /users/{uid} {
+      allow read, write: if isOwner(uid);
+
+      match /progress/{gameId} {
+        allow read: if isOwner(uid);
+        // Scores are client-reported, so keep them within sane bounds. This is
+        // not anti-cheat -- it just stops absurd values from landing in the DB.
+        allow write: if isOwner(uid)
+                     && request.resource.data.bestScore is number
+                     && request.resource.data.bestScore >= 0
+                     && request.resource.data.bestScore <= 1000000
+                     && request.resource.data.plays is number
+                     && request.resource.data.plays >= 0;
+      }
+
+      match /sessions/{sessionId} {
+        allow read: if isOwner(uid);
+        allow create: if isOwner(uid)
+                      && request.resource.data.score is number
+                      && request.resource.data.score >= 0;
+        // Finished runs are an append-only history.
+        allow update, delete: if false;
+      }
+    }
+
+    // Nothing else in the project is reachable from the client.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

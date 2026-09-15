@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#07080f" />
+<meta name="description" content="EZ-GAMES — five hand-built browser games in one place. Track your best scores, play instantly, no downloads." />
+<title>EZ-GAMES — The Premier Web Arcade</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='9' fill='%2300f2ff'/><text x='16' y='23' font-size='18' font-family='sans-serif' font-weight='bold' text-anchor='middle' fill='%23050711'>EZ</text></svg>" />
+</head>
+<body>
+<a class="skip-link" href="#library">Skip to games</a>
+
+<header class="nav">
+  <div class="nav-inner">
+    <div class="brand"><span class="brand-mark">EZ</span><span>EZ&middot;GAMES</span></div>
+    <nav class="nav-links" aria-label="Primary">
+      <button class="nav-link active" data-scroll="library">Library</button>
+      <button class="nav-link" data-scroll="progress">My Progress</button>
+    </nav>
+    <div class="nav-spacer"></div>
+    <div class="account" id="account"></div>
+  </div>
+</header>
+
+<main id="main">
+  <section class="hero shell">
+    <span class="eyebrow"><i class="dot-live"></i> 5 games &middot; instant play</span>
+    <h1>Play the whole arcade<br /><span class="grad">without ever leaving.</span></h1>
+    <p>Five hand-built browser games, loaded in place and ready in a second. Sign in to keep every score,
+       streak and level you clear across devices.</p>
+    <div class="hero-actions">
+      <button class="btn btn-primary" data-scroll="library">Browse the library</button>
+      <button class="btn btn-ghost" id="hero-cta">Sign in to save progress</button>
+    </div>
+    <div id="stat-strip"></div>
+    <div id="config-banner"></div>
+  </section>
+
+  <section class="section shell" id="library">
+    <div class="section-head">
+      <div>
+        <h2>The library</h2>
+        <p>Every game runs right here in the page — nothing opens in a new tab.</p>
+      </div>
+      <span class="eyebrow" id="library-count">5 games</span>
+    </div>
+    <div class="grid" id="game-grid"></div>
+  </section>
+
+  <section class="section shell" id="progress">
+    <div class="section-head">
+      <div>
+        <h2>My progress</h2>
+        <p id="progress-sub">Your best scores and recent runs.</p>
+      </div>
+    </div>
+    <div id="progress-body"></div>
+  </section>
+
+  <footer class="footer shell">
+    <span>&copy; 2026 EZ-GAMES &middot; All systems operational</span>
+    <span id="storage-mode"></span>
+  </footer>
+</main>
+
+<div class="modal-backdrop" id="auth-modal" role="dialog" aria-modal="true" aria-labelledby="auth-title" hidden></div>
+<div class="player" id="player" role="dialog" aria-modal="true" aria-label="Game player" hidden></div>
+<div class="toasts" id="toasts" aria-live="polite"></div>
+
+<script type="module" src="/src/main.js"></script>
+</body>
+</html>

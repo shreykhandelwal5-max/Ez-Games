@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <title>GRAVITY FALL | STABLE</title>
+    <style>
+        :root {
+            --cyan: #00f2ff;
+            --purple: #bc13fe;
+            --red: #ff3131;
+            --bg: #010206;
+        }
+
+        body, html { 
+            margin: 0; padding: 0; overflow: hidden; 
+            background: var(--bg); height: 100vh; width: 100vw;
+            font-family: 'Inter', system-ui, sans-serif;
+            color: white; touch-action: none;
+        }
+
+        canvas { display: block; width: 100%; height: 100%; }
+
+        #boot-screen {
+            position: fixed; inset: 0; background: var(--bg);
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            z-index: 1000;
+        }
+
+        #ui {
+            position: absolute; top: 20px; width: 100%;
+            display: flex; justify-content: center; gap: 15px;
+            pointer-events: none; z-index: 100; opacity: 0; transition: 0.5s;
+        }
+
+        .pill {
+            background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1);
+            backdrop-filter: blur(10px); padding: 8px 25px; border-radius: 50px;
+            font-size: 10px; letter-spacing: 3px; text-transform: uppercase;
+        }
+
+        .btn {
+            background: transparent; border: 1px solid var(--cyan);
+            color: var(--cyan); padding: 15px 40px; font-size: 12px;
+            letter-spacing: 4px; text-transform: uppercase; cursor: pointer;
+            border-radius: 4px; transition: 0.3s;
+        }
+
+        .btn:hover { background: var(--cyan); color: black; box-shadow: 0 0 20px var(--cyan); }
+    </style>
+    <script src="_ez-sdk.js"></script>
+</head>
+<body>
+
+    <div id="ui">
+        <div class="pill" style="color: var(--purple)">Score: <span id="s-val">0</span></div>
+        <div class="pill" style="color: var(--cyan)">Lvl: <span id="l-val">1</span></div>
+    </div>
+
+    <div id="boot-screen">
+        <h1 style="letter-spacing: 15px; font-weight: 100; margin-bottom: 40px;">GRAVITY FALL</h1>
+        <button class="btn" onclick="start()">Initialize Game</button>
+    </div>
+
+    <canvas id="c"></canvas>
+
+    <script>
+        const canvas = document.getElementById('c');
+        const ctx = canvas.getContext('2d');
+        const ui = document.getElementById('ui');
+        const boot = document.getElementById('boot-screen');
+        
+        let w, h, score = 0, level = 1, active = false;
+        let player = { x: 0, y: 0, w: 140, h: 10, targetX: 0 };
+        let items = [], stars = [], particles = [];
+
+        function resize() {
+            w = canvas.width = window.innerWidth;
+            h = canvas.height = window.innerHeight;
+            player.y = h - 80;
+            if(!active) { player.x = w/2; player.targetX = w/2; }
+            stars = Array.from({length: 100}, () => ({
+                x: Math.random() * w, y: Math.random() * h,
+                s: Math.random() * 2 + 1, v: Math.random() * 2 + 0.5
+            }));
+        }
+
+        window.addEventListener('resize', resize);
+        window.addEventListener('mousemove', e => player.targetX = e.clientX);
+        window.addEventListener('touchmove', e => {
+            player.targetX = e.touches[0].clientX;
+            e.preventDefault();
+        }, { passive: false });
+
+        // Click interaction
+        window.addEventListener('mousedown', e => handleInteraction(e.clientX, e.clientY));
+        window.addEventListener('touchstart', e => handleInteraction(e.touches[0].clientX, e.touches[0].clientY));
+
+        function handleInteraction(ex, ey) {
+            if(!active) return;
+            items.forEach((it, i) => {
+                if(Math.hypot(it.x - ex, it.y - ey) < 60) {
+                    explode(it.x, it.y, it.type === 'orb' ? '#bc13fe' : '#ff3131');
+                    score += it.type === 'bomb' ? 30 : 5;
+                    items.splice(i, 1);
+                    updateUI();
+                }
+            });
+        }
+
+        function explode(x, y, color) {
+            for(let i=0; i<15; i++) {
+                particles.push({
+                    x, y, vx: (Math.random()-0.5)*10, vy: (Math.random()-0.5)*10,
+                    a: 1, c: color
+                });
+            }
+        }
+
+        function updateUI() {
+            document.getElementById('s-val').innerText = score;
+            EZ.score(score);
+            level = Math.floor(score/200) + 1;
+            document.getElementById('l-val').innerText = level;
+        }
+
+        function spawn() {
+            if(!active) return;
+            const type = Math.random() > 0.4 ? 'orb' : 'bomb';
+            items.push({
+                x: Math.random() * (w - 100) + 50, y: -50,
+                r: type === 'orb' ? 14 : 20, type,
+                v: (2 + Math.random() * 2) * (1 + level * 0.1)
+            });
+            setTimeout(spawn, Math.max(250, 1000 - (level * 70)));
+        }
+
+        function start() {
+            boot.style.display = 'none';
+            ui.style.opacity = '1';
+            active = true;
+            score = 0; level = 1; items = []; particles = [];
+            updateUI();
+            resize();
+            spawn();
+            loop();
+            EZ.start();
+        }
+
+        function loop() {
+            if(!active) return;
+            ctx.fillStyle = '#010206';
+            ctx.fillRect(0, 0, w, h);
+
+            // Stars
+            ctx.fillStyle = "white";
+            stars.forEach(s => {
+                s.y += s.v * (1 + level * 0.1);
+                if(s.y > h) s.y = 0;
+                ctx.globalAlpha = 0.2;
+                ctx.fillRect(s.x, s.y, s.s, s.s);
+            });
+
+            // Player
+            player.x += (player.targetX - player.x) * 0.2;
+            ctx.shadowBlur = 15; ctx.shadowColor = '#00f2ff';
+            ctx.fillStyle = '#00f2ff';
+            ctx.globalAlpha = 1;
+            ctx.beginPath();
+            ctx.roundRect(player.x - player.w/2, player.y, player.w, player.h, 5);
+            ctx.fill();
+            ctx.shadowBlur = 0;
+
+            // Items
+            items.forEach((it, i) => {
+                it.y += it.v;
+                const col = it.type === 'orb' ? '#bc13fe' : '#ff3131';
+                ctx.fillStyle = col;
+                ctx.shadowBlur = 10; ctx.shadowColor = col;
+                ctx.beginPath(); ctx.arc(it.x, it.y, it.r, 0, Math.PI*2); ctx.fill();
+                ctx.shadowBlur = 0;
+
+                // Collision
+                if(it.y + it.r > player.y && it.y < player.y + player.h && 
+                   it.x > player.x - player.w/2 && it.x < player.x + player.w/2) {
+                    if(it.type === 'orb') {
+                        score += 10; updateUI(); items.splice(i, 1);
+                        explode(it.x, it.y, '#bc13fe');
+                    } else {
+                        active = false;
+                        boot.style.display = 'flex';
+                        boot.querySelector('h1').innerText = "CORE BREACHED";
+                        boot.querySelector('button').innerText = "Reboot System";
+                        EZ.over({ score: score, detail: { level: level } });
+                    }
+                }
+                if(it.y > h + 50) items.splice(i, 1);
+            });
+
+            // Particles
+            particles.forEach((p, i) => {
+                p.x += p.vx; p.y += p.vy; p.a -= 0.02;
+                if(p.a <= 0) particles.splice(i, 1);
+                ctx.globalAlpha = p.a; ctx.fillStyle = p.c;
+                ctx.beginPath(); ctx.arc(p.x, p.y, 2, 0, Math.PI*2); ctx.fill();
+            });
+
+            requestAnimationFrame(loop);
+        }
+
+        resize();
+        EZ.ready();
+    </script>
+</body>
+</html>

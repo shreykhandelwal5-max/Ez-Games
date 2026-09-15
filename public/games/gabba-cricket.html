@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <title>Gabba - Desktop Fullscreen Pro</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { background: #020617; overflow: hidden; width: 100vw; height: 100vh; font-family: 'Arial Black', sans-serif; }
+        canvas { display: block; width: 100%; height: 100%; cursor: none; }
+        #ui { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10; color: white; padding: 40px; }
+        #scorecard { background: rgba(15, 23, 42, 0.9); border-left: 8px solid #db2777; padding: 25px; border-radius: 4px; display: inline-block; }
+        #best-score { position: absolute; top: 40px; right: 40px; background: rgba(0,0,0,0.6); padding: 15px 25px; border-radius: 50px; border: 1px solid #334155; font-size: 14px; }
+        #msg { position: absolute; top: 40%; left: 50%; transform: translate(-50%, -50%); font-size: 100px; opacity: 0; font-style: italic; -webkit-text-stroke: 2px #fff; z-index: 100; pointer-events: none; }
+        #stats-scr { position: absolute; width: 100%; height: 100%; background: rgba(2, 6, 23, 0.98); z-index: 1000; display: none; flex-direction: column; align-items: center; justify-content: center; color: white; pointer-events: auto; }
+        .btn-p { padding: 20px 60px; background: #db2777; border: none; font-weight: 900; cursor: pointer; border-radius: 4px; font-size: 20px; color: #fff; margin-top: 30px; }
+        .dot { width: 16px; height: 16px; border: 2px solid #444; border-radius: 50%; display: inline-block; margin-right: 8px; }
+        .dot.fill { background: #ec4899; box-shadow: 0 0 12px #ec4899; }
+        #report { background: rgba(255,255,255,0.03); padding: 40px; border-radius: 4px; width: 500px; border: 1px solid #1e293b; line-height: 2.2; font-size: 20px; }
+    </style>
+    <script src="_ez-sdk.js"></script>
+</head>
+<body>
+
+    <div id="stats-scr">
+        <h2 style="color: #f472b6; font-size: 60px; margin-bottom: 25px;">INNINGS COMPLETE</h2>
+        <div id="report"></div>
+        <button onclick="resetGame()" class="btn-p">PLAY AGAIN</button>
+    </div>
+
+    <div id="ui">
+        <div id="scorecard">
+            <div style="font-size: 48px; font-weight: 900;"><span id="r">0</span> / <span id="w">0</span></div>
+            <div id="ball-tag" style="font-size: 16px; color: #f472b6; margin: 8px 0;">DELIVERY: 0</div>
+            <div id="level-tag" style="color:#22c55e; font-size: 12px; font-weight: bold;">LEVEL: JUNIOR</div>
+            <div id="dots-container" style="display: block; margin: 15px 0;"><div class="dot" id="d1"></div><div class="dot" id="d2"></div><div class="dot" id="d3"></div></div>
+            <div style="margin-top:15px; font-size:14px; border-top: 1px solid #334155; padding-top:15px;">
+                SHOT: <span id="mode-txt" style="color:#22c55e">STROKE (Q)</span>
+            </div>
+        </div>
+        <div id="best-score">BEST: <span id="hi-score">0</span></div>
+        <div id="msg">SIX!</div>
+    </div>
+
+    <canvas id="game"></canvas>
+
+<script>
+    const canvas = document.getElementById('game');
+    const ctx = canvas.getContext('2d');
+
+    let isGameOver = false, totalRuns = 0, totalWkts = 0, ballCount = 0, highScore = 0;
+    let dotCount = 0, bX = 0, bY, isSwinging = false, swingProg = 0, shotType = 'STROKE';
+    let stats = { dots: 0, outs: 0, sixes: 0, fours: 0, singles: 0 };
+    
+    // Physics Logic Separated
+    const ball = { x:0, y:0, z:1000, vx:0, vy:0, vz:0, active: false, hit:false, sc:false, spun: false };
+    const flds = [];
+
+    function resize() {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+        bY = canvas.height * 0.9; bX = canvas.width / 2;
+        flds.length = 0;
+        const bp = [{x:0.1,y:0.6},{x:0.2,y:0.55},{x:0.35,y:0.52},{x:0.5,y:0.52},{x:0.65,y:0.52},{x:0.8,y:0.55},{x:0.9,y:0.6},{x:0.25,y:0.8},{x:0.75,y:0.8}];
+        bp.forEach(p => flds.push({ x: canvas.width * p.x, y: canvas.height * p.y, ox: canvas.width * p.x, oy: canvas.height * p.y, sp: 6 }));
+    }
+
+    function spawnBall() {
+        if(isGameOver) return;
+        ball.active = true; ball.sc = false; ball.hit = false; ball.spun = false;
+        ballCount++;
+        
+        document.getElementById('ball-tag').innerText = `DELIVERY: ${ballCount}`;
+        flds.forEach(f => { f.x = f.ox; f.y = f.oy; });
+
+        let speed = ballCount > 50 ? 46 : (ballCount > 35 ? 36 : 26);
+        if(ballCount > 35) {
+            document.getElementById('level-tag').innerText = ballCount > 50 ? "LEVEL: ALL HELL LOOSE" : "LEVEL: SENIOR";
+            document.getElementById('level-tag').style.color = ballCount > 50 ? "#ef4444" : "#f59e0b";
+        }
+
+        ball.z = 1000; ball.x = canvas.width/2; ball.y = canvas.height * 0.45;
+        ball.vz = -speed; ball.vy = 1.0; 
+        ball.vx = (Math.random() - 0.5) * (ballCount > 35 ? 18 : 7);
+    }
+
+    function loop() {
+        if(!isGameOver) { update(); draw(); }
+        requestAnimationFrame(loop);
+    }
+
+    function update() {
+        if (!ball.active) return;
+
+        // Spin Logic
+        if(ballCount > 35 && ball.z < 600 && !ball.spun && !ball.hit) {
+            let intensity = ballCount > 50 ? 30 : 16;
+            ball.vx += (Math.random() > 0.5 ? intensity : -intensity);
+            ball.vy -= (Math.random() * 4);
+            ball.spun = true;
+        }
+
+        ball.z += ball.vz; ball.x += ball.vx; ball.y += ball.vy; ball.vy += 0.35; 
+        
+        // Solid Hit Detection
+        let hitRange = ballCount > 35 ? 200 : 250;
+        if(!ball.hit && ball.z < 150 && ball.z > -150 && isSwinging && Math.abs(ball.x - bX) < hitRange) {
+            ball.hit = true; ball.vz = 65; ball.vy = shotType === 'LOFT' ? -38 : -14;
+            ball.vx = (ball.x - canvas.width/2) * 1.2;
+            dotCount = 0; updateDots();
+        }
+        
+        // Finalize States (Physically kill ball update after result)
+        if(ball.hit && ball.z > 1700 && !ball.sc) { ball.sc = true; ball.active = false; resolveShot(); }
+        if(!ball.hit && ball.z < -450 && !ball.sc) { ball.sc = true; ball.active = false; handleDot(); }
+    }
+
+    function draw() {
+        ctx.fillStyle = ballCount > 50 ? '#020617' : '#0f172a';
+        ctx.fillRect(0,0, canvas.width, canvas.height);
+        ctx.fillStyle = '#064e3b'; ctx.fillRect(0, canvas.height*0.55, canvas.width, canvas.height*0.45);
+        ctx.fillStyle = '#94a3b8'; ctx.beginPath();
+        ctx.moveTo(canvas.width/2-80, canvas.height*0.55); ctx.lineTo(canvas.width/2+80, canvas.height*0.55);
+        ctx.lineTo(canvas.width/2+350, canvas.height); ctx.lineTo(canvas.width/2-350, canvas.height); ctx.fill();
+
+        if (ball.active) {
+            let sz = 10 + (65 * (1 - ball.z/1000));
+            ctx.fillStyle = ballCount > 50 ? "#f472b6" : "#be123c";
+            ctx.beginPath(); ctx.arc(ball.x, ball.y, Math.max(2, sz), 0, Math.PI*2); ctx.fill();
+        }
+
+        flds.forEach(f => {
+            if(ball.hit && ball.z > 200) f.x += Math.sign(ball.x - f.x) * f.sp;
+            ctx.fillStyle = "white"; ctx.beginPath(); ctx.arc(f.x, f.y, 10, 0, Math.PI*2); ctx.fill();
+        });
+
+        ctx.save(); ctx.translate(bX, bY);
+        ctx.fillStyle = "white"; ctx.fillRect(-22, -80, 44, 80); 
+        ctx.fillStyle = "#334155"; 
+        if(isSwinging) { 
+            ctx.rotate(-1.5); ctx.fillRect(0, -15, 180, 30); 
+            swingProg += 0.25; if(swingProg > 1) isSwinging = false; 
+        } else { ctx.rotate(0.3); ctx.fillRect(15, -70, 22, 110); }
+        ctx.restore();
+    }
+
+    function handleDot() {
+        dotCount++; stats.dots++; updateDots();
+        if(dotCount >= 3) { totalWkts++; stats.outs++; dotCount = 0; updateDots(); pop("OUT!"); } 
+        else { pop("DOT"); }
+        finalize();
+    }
+
+    function resolveShot() {
+        let caught = flds.some(f => Math.abs(f.x - ball.x) < 120);
+        if(shotType === 'LOFT') {
+            if(caught) { totalWkts++; stats.outs++; pop("CAUGHT!"); } 
+            else { totalRuns += 6; stats.sixes++; pop("SIX!"); }
+        } else {
+            if(caught) { totalRuns += 1; stats.singles++; pop("SINGLE"); } 
+            else { totalRuns += 4; stats.fours++; pop("FOUR!"); }
+        }
+        finalize();
+    }
+
+    function finalize() {
+        document.getElementById('r').innerText = totalRuns;
+        document.getElementById('w').innerText = totalWkts;
+        if(totalRuns > highScore) { highScore = totalRuns; document.getElementById('hi-score').innerText = highScore; }
+        EZ.score(totalRuns);
+        
+        if(totalWkts >= 5) { isGameOver = true; setTimeout(showEndStats, 800); } 
+        else { setTimeout(spawnBall, 1200); }
+    }
+
+    function showEndStats() {
+        document.getElementById('stats-scr').style.display = 'flex';
+        EZ.over({ score: totalRuns, detail: { balls: ballCount, fours: stats.fours, sixes: stats.sixes } });
+        let sr = ((totalRuns / ballCount) * 100).toFixed(2);
+        let control = (100 - (((stats.dots + stats.outs) / ballCount) * 100)).toFixed(2);
+        document.getElementById('report').innerHTML = `
+            <div style="display: flex; justify-content: space-between;"><span>TOTAL RUNS:</span> <span style="color:#f472b6">${totalRuns}</span></div>
+            <div style="display: flex; justify-content: space-between;"><span>STRIKE RATE:</span> <span>${sr}</span></div>
+            <div style="display: flex; justify-content: space-between;"><span>CONTROL ACCURACY:</span> <span>${control}%</span></div>
+            <div style="display: flex; justify-content: space-between; border-top:1px solid #334155; margin-top:10px;"><span>TOTAL BALLS:</span> <span>${ballCount}</span></div>
+        `;
+    }
+
+    function resetGame() {
+        isGameOver = false; totalRuns = 0; totalWkts = 0; ballCount = 0; dotCount = 0;
+        stats = { dots: 0, outs: 0, sixes: 0, fours: 0, singles: 0 };
+        document.getElementById('stats-scr').style.display = 'none';
+        document.getElementById('r').innerText = '0'; document.getElementById('w').innerText = '0';
+        document.getElementById('ball-tag').innerText = 'DELIVERY: 0';
+        document.getElementById('level-tag').innerText = "LEVEL: JUNIOR";
+        document.getElementById('level-tag').style.color = "#22c55e";
+        updateDots(); spawnBall();
+        EZ.start();
+    }
+
+    function updateDots() {
+        for(let i=1; i<=3; i++) document.getElementById('d'+i).className = i <= dotCount ? 'dot fill' : 'dot';
+    }
+
+    function pop(v) { 
+        let m = document.getElementById('msg'); m.innerText = v; m.style.opacity = 1; 
+        setTimeout(() => { if(!ball.active) m.style.opacity = 0; }, 800); 
+    }
+    
+    window.addEventListener('mousemove', (e) => bX = e.clientX);
+    window.addEventListener('mousedown', () => { if(!isGameOver) { isSwinging = true; swingProg = 0; } });
+    window.addEventListener('keydown', (e) => { 
+        if(e.key.toLowerCase()==='w') { shotType='LOFT'; document.getElementById('mode-txt').innerText = "LOFTED (W)"; document.getElementById('mode-txt').style.color = "#db2777"; }
+        if(e.key.toLowerCase()==='q') { shotType='STROKE'; document.getElementById('mode-txt').innerText = "STROKE (Q)"; document.getElementById('mode-txt').style.color = "#22c55e"; }
+    });
+    
+    window.addEventListener('resize', resize);
+
+    // The shell owns the persisted best score and hands it over on launch.
+    EZ.onShellMessage = function (type, payload) {
+        if (type === 'init' && payload && payload.bestScore > highScore) {
+            highScore = payload.bestScore;
+            document.getElementById('hi-score').innerText = highScore;
+        }
+    };
+
+    resize(); spawnBall(); loop();
+    EZ.ready(); EZ.start();
+</script>
+</body>
+</html>

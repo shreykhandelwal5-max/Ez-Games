@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <title>ZEN SNAKE: VIBRANT AURA</title>
+    <style>
+        :root {
+            --bg-gradient: linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%);
+            --glass: rgba(255, 255, 255, 0.08);
+            --border: rgba(255, 255, 255, 0.15);
+            --neon: #00f2ff;
+        }
+
+        body, html { 
+            margin: 0; padding: 0; overflow: hidden; 
+            background: #0f0c29;
+            background: var(--bg-gradient);
+            width: 100vw; height: 100vh;
+            font-family: 'Inter', sans-serif;
+            color: white;
+            touch-action: none;
+        }
+
+        canvas { display: block; width: 100vw; height: 100vh; cursor: none; }
+
+        #ambient-title {
+            position: absolute; top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 12vw; font-weight: 100;
+            color: rgba(255, 255, 255, 0.03);
+            text-transform: uppercase; letter-spacing: 50px;
+            pointer-events: none; z-index: 0;
+            white-space: nowrap; user-select: none;
+        }
+
+        #ui {
+            position: absolute; top: 30px; left: 40px;
+            display: flex; gap: 20px; pointer-events: none; z-index: 10;
+        }
+
+        .card {
+            background: var(--glass);
+            backdrop-filter: blur(25px);
+            -webkit-backdrop-filter: blur(25px);
+            border: 1px solid var(--border);
+            padding: 10px 25px; border-radius: 15px;
+            text-align: center;
+        }
+
+        .label { font-size: 9px; text-transform: uppercase; letter-spacing: 3px; opacity: 0.5; margin-bottom: 4px; }
+        .value { font-size: 22px; font-weight: 200; color: var(--neon); }
+
+        /* Overlays */
+        #overlay, #pause-screen {
+            position: fixed; inset: 0;
+            background: rgba(15, 12, 41, 0.85);
+            display: none; flex-direction: column;
+            align-items: center; justify-content: center;
+            z-index: 100; backdrop-filter: blur(15px);
+        }
+
+        .modal {
+            background: var(--glass);
+            border: 1px solid var(--border);
+            padding: 50px; border-radius: 30px;
+            text-align: center;
+        }
+
+        .btn {
+            background: transparent; border: 1px solid white;
+            color: white; padding: 12px 50px;
+            font-size: 13px; text-transform: uppercase; letter-spacing: 4px;
+            cursor: pointer; transition: 0.4s; margin-top: 20px;
+            border-radius: 5px;
+        }
+
+        .btn:hover { background: white; color: #0f0c29; }
+
+        #pause-hint {
+            position: absolute; bottom: 30px; right: 40px;
+            font-size: 10px; text-transform: uppercase; letter-spacing: 2px;
+            opacity: 0.4; pointer-events: none;
+        }
+    </style>
+    <script src="_ez-sdk.js"></script>
+</head>
+<body>
+
+    <div id="ambient-title">ZEN SNAKE</div>
+
+    <div id="ui">
+        <div class="card"><div class="label">Time</div><div id="timer" class="value">210</div></div>
+        <div class="card"><div class="label">Score</div><div id="score" class="value">0</div></div>
+        <div class="card" style="border-color: rgba(255, 215, 0, 0.2);">
+            <div class="label" style="color: #ffd700;">Best</div>
+            <div id="highscore" class="value" style="color: #ffd700;">0</div>
+        </div>
+    </div>
+
+    <div id="pause-hint">Press [P] or [Space] to Pause</div>
+
+    <div id="pause-screen">
+        <div class="modal">
+            <h1 style="font-weight:100; letter-spacing:10px;">PAUSED</h1>
+            <button class="btn" onclick="togglePause()">Resume</button>
+        </div>
+    </div>
+
+    <div id="overlay">
+        <div class="modal">
+            <h1 style="font-weight:100; letter-spacing:10px;">FINISH</h1>
+            <p id="final-stats" style="opacity:0.8; font-size: 1.2rem; margin: 20px 0;"></p>
+            <button class="btn" onclick="startNewGame()">Retry</button>
+        </div>
+    </div>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreVal = document.getElementById('score');
+        const highscoreVal = document.getElementById('highscore');
+        const timerVal = document.getElementById('timer');
+        const overlay = document.getElementById('overlay');
+        const pauseScreen = document.getElementById('pause-screen');
+
+        // Lazily-built WebAudio blip (browsers only allow this after a gesture).
+        let audioCtx = null;
+        const crunch = {
+            play() {
+                try {
+                    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                    if (audioCtx.state === 'suspended') audioCtx.resume();
+                    const osc = audioCtx.createOscillator(), gain = audioCtx.createGain();
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(660, audioCtx.currentTime);
+                    osc.frequency.exponentialRampToValueAtTime(1320, audioCtx.currentTime + 0.12);
+                    gain.gain.setValueAtTime(0.14, audioCtx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.22);
+                    osc.connect(gain).connect(audioCtx.destination);
+                    osc.start(); osc.stop(audioCtx.currentTime + 0.22);
+                } catch (e) { /* audio is optional */ }
+                return Promise.resolve();
+            },
+            currentTime: 0,
+        };
+
+        let w, h, stars = [], foods = [], trail = [];
+        let score = 0, time = 210, active = false, paused = false;
+        let highscore = localStorage.getItem('zenSnakeBestScore') || 0;
+        let mouse = { x: window.innerWidth/2, y: window.innerHeight/2 };
+
+        const DWELL_TIME = 1500;
+        const TRAIL_MAX = 40;
+        const BALL_COUNT = 6;
+
+        function resize() {
+            w = canvas.width = window.innerWidth;
+            h = canvas.height = window.innerHeight;
+            stars = Array.from({length: 80}, () => new BackgroundStar());
+        }
+        window.addEventListener('resize', resize);
+
+        window.addEventListener('mousemove', e => {
+            mouse.x = e.clientX; mouse.y = e.clientY;
+            if(active && !paused) {
+                trail.push({x: mouse.x, y: mouse.y, hue: (Date.now() / 20) % 360});
+                if(trail.length > TRAIL_MAX) trail.shift();
+            }
+        });
+
+        // Pause Controls
+        window.addEventListener('keydown', e => {
+            if (e.code === 'KeyP' || e.code === 'Space') togglePause();
+        });
+
+        function togglePause() {
+            if (!active) return;
+            paused = !paused;
+            pauseScreen.style.display = paused ? 'flex' : 'none';
+        }
+
+        class BackgroundStar {
+            constructor() {
+                this.x = Math.random() * window.innerWidth;
+                this.y = Math.random() * window.innerHeight;
+                this.s = Math.random() * 2;
+                this.v = Math.random() * 0.2 + 0.05;
+            }
+            draw() {
+                this.y -= this.v;
+                if(this.y < 0) this.y = h;
+                ctx.fillStyle = "rgba(255, 255, 255, 0.2)";
+                ctx.beginPath(); ctx.arc(this.x, this.y, this.s, 0, Math.PI*2); ctx.fill();
+            }
+        }
+
+        class FoodBall {
+            constructor(index) {
+                this.index = index;
+                this.init();
+            }
+            init() {
+                this.x = Math.random() * (window.innerWidth - 150) + 75;
+                this.y = Math.random() * (window.innerHeight - 150) + 75;
+                this.vx = (Math.random() - 0.5) * 2.5;
+                this.vy = (Math.random() - 0.5) * 2.5;
+                this.hue = (this.index * (360 / BALL_COUNT)) % 360; 
+                this.dwellStart = null;
+            }
+            update() {
+                if (paused) return;
+                this.x += this.vx; this.y += this.vy;
+                if(this.x < 50 || this.x > w - 50) this.vx *= -1;
+                if(this.y < 50 || this.y > h - 50) this.vy *= -1;
+
+                const dist = Math.hypot(mouse.x - this.x, mouse.y - this.y);
+                if(dist < 55) {
+                    if(!this.dwellStart) this.dwellStart = Date.now();
+                    if(Date.now() - this.dwellStart >= DWELL_TIME) this.capture();
+                } else {
+                    this.dwellStart = null;
+                }
+            }
+            capture() {
+                crunch.currentTime = 0;
+                crunch.play().catch(() => {}); 
+                score += 10;
+                scoreVal.innerText = score;
+                EZ.score(score);
+                this.init();
+            }
+            draw() {
+                ctx.save();
+                ctx.globalCompositeOperation = 'lighter';
+                const pls = Math.sin(Date.now()/500) * 6;
+                let g = ctx.createRadialGradient(this.x, this.y, 0, this.x, this.y, 25 + pls);
+                g.addColorStop(0, `hsla(${this.hue}, 100%, 75%, 0.8)`);
+                g.addColorStop(1, `hsla(${this.hue}, 100%, 75%, 0)`);
+                ctx.fillStyle = g;
+                ctx.beginPath(); ctx.arc(this.x, this.y, 30 + pls, 0, Math.PI*2); ctx.fill();
+
+                if(this.dwellStart) {
+                    const pct = (Date.now() - this.dwellStart) / DWELL_TIME;
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, 42, -Math.PI/2, (-Math.PI/2) + (Math.PI*2 * pct));
+                    ctx.strokeStyle = "white";
+                    ctx.lineWidth = 4; ctx.stroke();
+                }
+                ctx.restore();
+            }
+        }
+
+        function startNewGame() {
+            // Reset state
+            score = 0;
+            time = 210;
+            active = true;
+            paused = false;
+            trail = [];
+            foods = [];
+            
+            // Sync UI
+            scoreVal.innerText = score;
+            timerVal.innerText = time;
+            highscoreVal.innerText = highscore;
+            overlay.style.display = 'none';
+            pauseScreen.style.display = 'none';
+            
+            // Re-init balls
+            for(let i=0; i < BALL_COUNT; i++) foods.push(new FoodBall(i));
+            
+            // Ensure loop restarts safely
+            requestAnimationFrame(loop);
+            EZ.start();
+        }
+
+        function loop() {
+            if(!active) return; // Stop drawing if game ended
+            
+            if (!paused) {
+                ctx.clearRect(0, 0, w, h);
+                stars.forEach(s => s.draw());
+
+                if(trail.length > 2) {
+                    ctx.save();
+                    ctx.globalCompositeOperation = 'screen';
+                    for(let i=1; i<trail.length; i++) {
+                        const r = i/trail.length;
+                        ctx.beginPath();
+                        ctx.strokeStyle = `hsla(${trail[i].hue}, 100%, 75%, ${r * 0.8})`;
+                        ctx.lineWidth = r * 28; ctx.lineCap = 'round';
+                        ctx.moveTo(trail[i-1].x, trail[i-1].y);
+                        ctx.lineTo(trail[i].x, trail[i].y);
+                        ctx.stroke();
+                    }
+                    ctx.restore();
+                }
+
+                foods.forEach(f => { f.update(); f.draw(); });
+            }
+            
+            requestAnimationFrame(loop);
+        }
+
+        // Timer Logic
+        setInterval(() => {
+            if(!active || paused) return;
+            if(time > 0) {
+                time--; 
+                timerVal.innerText = time;
+            } else {
+                active = false;
+                if(score > highscore) {
+                    highscore = score;
+                    localStorage.setItem('zenSnakeBestScore', highscore);
+                }
+                document.getElementById('final-stats').innerHTML = `Final Score: <b>${score}</b>`;
+                overlay.style.display = 'flex';
+                EZ.over({ score: score });
+            }
+        }, 1000);
+
+        // The shell holds the cross-device best score.
+        EZ.onShellMessage = function (type, payload) {
+            if (type === 'init' && payload && payload.bestScore > highscore) {
+                highscore = payload.bestScore;
+                highscoreVal.innerText = highscore;
+            }
+        };
+
+        resize();
+        startNewGame();
+        EZ.ready();
+    </script>
+</body>
+</html>
