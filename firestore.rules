@@ -4,6 +4,7 @@ rules_version = '2';
 //   users/{uid}                      profile
 //   users/{uid}/progress/{gameId}    per-game bests, plays, time
 //   users/{uid}/sessions/{autoId}    one document per finished run
+//   users/{uid}/assessments/{gameId} baseline, practice count and test history
 //
 // Every document is private to the player it belongs to: a signed-in user can
 // only ever read and write inside their own /users/{uid} subtree.
@@ -27,6 +28,16 @@ service cloud.firestore {
                      && request.resource.data.bestScore <= 1000000
                      && request.resource.data.plays is number
                      && request.resource.data.plays >= 0;
+      }
+
+      // Baseline / practice / test state. Values here are derived measurements
+      // rather than raw scores, and a metric like goal difference is legitimately
+      // negative, so this is not bounded the way progress is.
+      match /assessments/{gameId} {
+        allow read: if isOwner(uid);
+        allow write: if isOwner(uid)
+                     && (!('practiceRuns' in request.resource.data)
+                         || request.resource.data.practiceRuns is number);
       }
 
       match /sessions/{sessionId} {

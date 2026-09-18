@@ -10,6 +10,10 @@ export const GAMES = [
   {
     id: 'gabba-cricket',
     title: 'Gabba Cricket',
+    skill: 'Timing & anticipation',
+    // Runs scored before five wickets: a fixed stopping rule, so runs compare.
+    metric: { key: 'score', direction: 'higher', label: 'Runs per innings', unit: 'runs' },
+    testNote: 'Every innings ends at five wickets, so scores are directly comparable.',
     tagline: 'Time the shot, build the innings',
     file: 'games/gabba-cricket.html',
     accent: '#ec4899',
@@ -39,6 +43,10 @@ export const GAMES = [
   {
     id: 'zen-snake',
     title: 'Zen Snake',
+    skill: 'Sustained attention & tracking',
+    // A fixed 210-second clock makes raw score a clean rate measure.
+    metric: { key: 'score', direction: 'higher', label: 'Points in 210s', unit: 'points' },
+    testNote: 'The clock is always 210 seconds, so score is a clean rate measure.',
     tagline: 'Hold the light, absorb the aura',
     file: 'games/zen-snake.html',
     accent: '#00f2ff',
@@ -67,6 +75,12 @@ export const GAMES = [
   {
     id: 'star-connect',
     title: 'Star Connect',
+    skill: 'Visual search & precision',
+    // Score here is the difficulty the player picked, not how well they did, so
+    // the test locks the difficulty and measures completion time instead.
+    metric: { key: 'duration', direction: 'lower', label: 'Time on Hard', unit: 'seconds' },
+    lockLevel: 'hard',
+    testNote: 'Tests lock the difficulty to Hard and measure how fast you finish.',
     tagline: 'Trace the constellation, in order',
     file: 'games/star-connect.html',
     accent: '#00f2ff',
@@ -94,6 +108,9 @@ export const GAMES = [
   {
     id: 'gravity-fall',
     title: 'Gravity Fall',
+    skill: 'Divided attention & reaction',
+    metric: { key: 'score', direction: 'higher', label: 'Score per life', unit: 'points' },
+    testNote: 'One life per run with the same ramp, so scores are comparable.',
     tagline: 'Catch the orbs, defuse the bombs',
     file: 'games/gravity-fall.html',
     accent: '#bc13fe',
@@ -120,6 +137,10 @@ export const GAMES = [
   {
     id: 'neon-striker',
     title: 'Neon Striker',
+    skill: 'Reaction speed & prediction',
+    // First-to-five saturates a raw goal count, so measure the margin.
+    metric: { key: 'goalDiff', direction: 'higher', label: 'Goal difference', unit: 'goals' },
+    testNote: 'Measured as your goals minus the CPU’s, so a 5-0 beats a 5-4.',
     tagline: 'Air hockey, first to five',
     file: 'games/neon-striker.html',
     accent: '#00d2ff',

@@ -10,11 +10,13 @@ import './styles.css';
 
 import { renderLibrary } from './ui/library.js';
 import { renderProgressView } from './ui/progressView.js';
+import { renderAssessmentView } from './ui/assessmentView.js';
 import { renderAccount } from './ui/account.js';
 import { openAuth } from './ui/authModal.js';
 import { openGame } from './ui/player.js';
 import { onAuth, initAuth, isSignedIn, state as authState } from './auth.js';
 import { syncForUser } from './progress.js';
+import { syncForUser as syncAssessments, RUNS_PER_SESSION } from './assessment.js';
 import { isFirebaseConfigured, missingKeys } from './config.js';
 import { trackPage, identify } from './analytics.js';
 import { GAME_BY_ID } from './games.js';
@@ -23,15 +25,18 @@ import { esc } from './ui/dom.js';
 // --- 1. Paint immediately, from local data only -----------------------------
 
 renderLibrary();
+renderAssessmentView();
 renderProgressView();
 renderAccount();
 wireNav();
 showConfigBanner();
+document.getElementById('cycle-hint').textContent = `${RUNS_PER_SESSION} runs per session`;
 
 // --- 2. Bring Firebase online in the background -----------------------------
 
 onAuth(({ user }) => {
   syncForUser(user);
+  syncAssessments(user);
   updateHeroCta();
   if (user) identify(user.uid, { account_type: user.isAnonymous ? 'guest' : 'registered' });
 });
@@ -78,9 +83,10 @@ function wireNav() {
 
   // Deep links: /#play=zen-snake opens straight into a game.
   const match = /(?:^|[#&])play=([\w-]+)/.exec(location.hash);
+  const modeMatch = /(?:^|[#&])mode=(practice|baseline|test)/.exec(location.hash);
   if (match && GAME_BY_ID[match[1]]) {
     // Let the first paint land before mounting a game frame.
-    requestAnimationFrame(() => openGame(match[1]));
+    requestAnimationFrame(() => openGame(match[1], modeMatch ? modeMatch[1] : 'practice'));
   }
 }
 

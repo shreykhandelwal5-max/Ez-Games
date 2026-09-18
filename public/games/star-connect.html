@@ -121,6 +121,7 @@
         const levelOrder = ['easy', 'medium', 'hard', 'legendary', 'impossible'];
         let w, h, dots = [], stars = [], pulseRings = [];
         let activeIdx = 0, isDragging = false, currentMode = 'easy';
+        let lockedLevel = null;
         let mouse = { x: 0, y: 0 };
         const HITBOX = 65;
 
@@ -201,7 +202,7 @@
                         isDragging = false;
                         EZ.level(currentMode);
                         EZ.over({ score: levelOrder.indexOf(currentMode) + 1, won: true, level: currentMode });
-                        const isLastLevel = currentMode === 'impossible';
+                        const isLastLevel = currentMode === 'impossible' || lockedLevel;
                         nextBtn.style.display = isLastLevel ? 'none' : 'block';
                         setTimeout(() => { overlay.style.display = 'flex'; }, 600);
                     }
@@ -278,6 +279,22 @@
 
             requestAnimationFrame(draw);
         }
+
+        // During an assessment session the shell pins the difficulty so the
+        // baseline and the test are measured under identical conditions.
+        EZ.onShellMessage = function (type, payload) {
+            if (type !== 'init' || !payload || !payload.lockLevel) return;
+            lockedLevel = payload.lockLevel;
+            document.querySelectorAll('.nav-item').forEach(btn => {
+                if (btn.id !== `nav-${lockedLevel}`) {
+                    btn.disabled = true;
+                    btn.style.opacity = '0.3';
+                    btn.style.pointerEvents = 'none';
+                }
+            });
+            taskUI.dataset.locked = '1';
+            changeLevel(lockedLevel);
+        };
 
         resize();
         draw();

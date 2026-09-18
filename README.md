@@ -4,6 +4,10 @@ A polished web arcade: five browser games in one page, with accounts, cross-devi
 progress tracking and analytics. Games load **in place** — nothing ever opens in a
 new tab.
 
+It also answers a harder question than "what was my high score?": **did playing
+actually make you better?** Every game measures a baseline before you practise,
+then retests you under identical conditions and reports the difference.
+
 ## Quick start
 
 ```bash
@@ -59,10 +63,12 @@ src/
   progress.js           progress tracking (localStorage + Firestore)
   analytics.js          event tracking facade
   games.js              the game catalogue (one entry per game)
+  assessment.js         baseline / practice / test engine
   ui/
     player.js           in-page game player (iframe overlay)
     library.js          the game grid
     progressView.js     stats dashboard
+    assessmentView.js   the improvement report (hero tile + diverging chart)
     authModal.js        sign in / sign up / reset
     account.js          nav account chip
 public/games/
@@ -83,8 +89,9 @@ EZ.level(name)                  // a named difficulty was cleared
 EZ.over({ score, won, level })  // run ended — the shell records and displays it
 ```
 
-The shell replies with `{ type: 'init', payload: { bestScore } }` so a game can
-show the player's real all-time best in its own HUD.
+The shell replies with `{ type: 'init', payload: { bestScore, mode, lockLevel } }`
+so a game can show the player's real all-time best in its own HUD, and pin any
+setting that has to stay constant while a baseline or test is being measured.
 
 **Adding a game**: drop the HTML in `public/games/`, include `_ez-sdk.js`, call the
 lifecycle methods, and add one entry to `src/games.js`.
@@ -97,10 +104,90 @@ users/{uid}/progress/{gameId}  bestScore, lastScore, plays, wins, timeSec, level
 users/{uid}/sessions/{autoId}  one append-only document per finished run
 ```
 
+(The assessment cycle adds `users/{uid}/assessments/{gameId}` — see
+[Measuring improvement](#measuring-improvement).)
+
 Writes go to `localStorage` first and to Firestore in the background, so finishing
 a game never waits on the network. Progress earned before signing in is merged into
 the account on first sign-in rather than discarded, and a guest who creates an
 account keeps the same uid (credential linking), so nothing is lost.
+
+## Measuring improvement
+
+The core loop is **baseline → practice → test**, per game.
+
+1. **Baseline.** Before real practice, you play a session of 3 runs. The mean is
+   your starting point. One run of any of these games is far too noisy to compare
+   against, which is why a session is several runs averaged.
+2. **Practice.** Free play. Runs are counted towards unlocking the test but never
+   scored against you. 5 practice runs unlock it.
+3. **Test.** The same session again, under identical conditions, compared with the
+   baseline. The result is reported as percent change (or absolute change where a
+   percentage would be meaningless).
+
+Finishing a test opens a fresh practice cycle, so a retest always has practice
+behind it rather than being a re-roll of the same afternoon.
+
+Both tuning constants live at the top of `src/assessment.js`:
+
+```js
+export const RUNS_PER_SESSION = 3;   // runs averaged per baseline/test session
+export const PRACTICE_REQUIRED = 5;  // practice runs that unlock the next test
+```
+
+### What each game measures
+
+A comparison is only worth anything if both sides are measured the same way, so
+each game declares one fixed metric in `src/games.js` and the player pins whatever
+setting needs holding constant.
+
+| Game | Metric | Direction | Why |
+| --- | --- | --- | --- |
+| Gabba Cricket | Runs per innings | higher | Innings always ends at 5 wickets — a fixed stopping rule |
+| Zen Snake | Points in 210s | higher | Fixed clock makes score a clean rate |
+| Star Connect | Time to finish **Hard** | **lower** | Its "score" is the difficulty you picked, not how well you did, so the test locks difficulty and times you |
+| Gravity Fall | Score per life | higher | One life, same difficulty ramp |
+| Neon Striker | Goal difference | higher | First-to-five saturates a raw goal count; a 5–0 should beat a 5–4 |
+
+Two consequences worth knowing:
+
+- **Lower-is-better metrics are handled properly.** Star Connect going from 40s to
+  30s is reported as a **+25% improvement**, not a 25% decline.
+- **Metrics that can be zero or negative skip percentages.** Goal difference has no
+  meaningful zero to divide by, so it reports absolute change instead.
+
+The shell pins a game's settings during a session by extending the init message:
+
+```js
+{ type: 'init', payload: { bestScore, mode, lockLevel } }
+```
+
+Star Connect uses `lockLevel` to force Hard and disable the difficulty dock, so a
+baseline on Easy can never be compared against a test on Impossible.
+
+### Honesty about what this measures
+
+The report says this in the UI too, and it should stay there: a gain means you got
+better **at that game**. That is a real, measured result, but it is not evidence of
+improved attention or reaction time in general — transfer from game training to
+everyday cognition is not something this data can show. These are not clinical
+assessments. Three-run averages smooth out luck but do not remove it, so one test
+is a snapshot; a trend needs repeat tests.
+
+### Assessment data model
+
+```
+users/{uid}/assessments/{gameId}
+  baseline      { runs:[], mean, best, worst, median, at }
+  practiceRuns  counter towards the next test
+  tests         [{ runs:[], mean, at, deltaPct, deltaAbs, improved }]   append-only history
+  active        the in-progress session, or null
+```
+
+Sessions are all-or-nothing: abandoning one part-way discards its runs rather than
+recording a half-length baseline. Like progress, this writes to `localStorage`
+first and Firestore in the background, and merges guest progress into the account
+on first sign-in.
 
 ## What was optimised
 
